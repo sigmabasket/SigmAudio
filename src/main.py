@@ -1,9 +1,9 @@
 import flet as ft
 import threading
 import time
-from controllers import AudioEditorController
-from utils import create_transport_controls
-from ui_components import TrackManager
+from src.managers.controllers import AudioEditorController
+from src.utils.utils import create_transport_controls
+from src.UI.ui_components import TrackManager
 
 
 def main(page: ft.Page):

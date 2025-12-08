@@ -205,3 +205,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Audio Editor specific
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.ogg
+temp/
+temp_audio/
+output/

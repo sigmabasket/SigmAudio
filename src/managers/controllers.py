@@ -1,4 +1,4 @@
-from models import Project, Track, AudioClip
+from src.core.models import Project, Track, AudioClip
 
 
 class AudioEditorController:

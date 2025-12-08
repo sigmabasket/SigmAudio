@@ -107,7 +107,7 @@ class DraggableClip:
 
         try:
             try:
-                from audio_visualizer import AudioWaveform
+                from src.core.audio_visualizer import AudioWaveform
                 waveform = AudioWaveform(clip.filepath, width=100, height=30, color=ft.Colors.BLUE_400)
                 clip_visualization = waveform.build()
             except:

@@ -1,0 +1,5 @@
+flet~=0.28.3
+numpy~=2.3.3
+PyAudio~=0.2.14
+pydub~=0.25.1
+soundfile~=0.13.1

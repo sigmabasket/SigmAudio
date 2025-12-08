@@ -5,8 +5,9 @@ import os
 from pathlib import Path
 import platform
 
-from drag_drop import create_draggable_clip_visualization
-from audio_exporter import AudioExporter
+from src.UI.drag_drop import create_draggable_clip_visualization
+from src.core.audio_exporter import AudioExporter
+from src.UI.file_dialog import FileDialog
 
 
 class SyncSlider:
@@ -380,7 +381,6 @@ class TrackManager:
         self.main_slider.on_position_changed = self._on_all_sliders_changed
         self.editor.set_ui_update_callback(self._on_playback_position_changed)
 
-        from file_dialog import FileDialog
         self.file_dialog = FileDialog(page, self._on_files_selected)
 
         self._initialize_default_tracks()
