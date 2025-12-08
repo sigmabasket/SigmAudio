@@ -1,5 +1,4 @@
 import flet as ft
-import os
 
 
 class FileDialog:
@@ -11,7 +10,6 @@ class FileDialog:
         self.page = page
         self.on_files_selected_callback = on_files_selected_callback
 
-        # Создаем контрол для выбора файлов
         self.file_picker = ft.FilePicker(on_result=self._on_file_picker_result)
         self.page.overlay.append(self.file_picker)
 

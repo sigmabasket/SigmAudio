@@ -2,16 +2,16 @@ import flet as ft
 import threading
 import time
 import os
+from pathlib import Path
+import platform
 
-# Импортируем новые классы
 from drag_drop import create_draggable_clip_visualization
 from clip_conflict_manager import ClipConflictManager
+from audio_exporter import AudioExporter
 
 
 class SyncSlider:
-    """
-    Синхронизированный слайдер для отображения прогресса воспроизведения
-    """
+    """Синхронизированный слайдер для отображения прогресса воспроизведения"""
 
     def __init__(self, editor, size_manager, height=40, is_main_slider=False):
         self.editor = editor
@@ -21,7 +21,6 @@ class SyncSlider:
         self.is_dragging = False
         self.was_playing = False
 
-        # Фоновый контейнер (серый)
         self.bg_container = ft.Container(
             expand=True,
             height=height,
@@ -29,7 +28,6 @@ class SyncSlider:
             border_radius=height / 2,
         )
 
-        # Прогресс контейнер (жёлтый)
         self.progress_container = ft.Container(
             width=0,
             height=height,
@@ -37,14 +35,12 @@ class SyncSlider:
             border_radius=height / 2,
         )
 
-        # Stack с фоном И прогрессом
         self.slider_stack = ft.Stack(
             [self.bg_container, self.progress_container],
             expand=True,
             height=height,
         )
 
-        # GestureDetector напрямую на Stack
         self.slider_gesture = ft.GestureDetector(
             content=self.slider_stack,
             on_tap_down=self._handle_tap_down,
@@ -63,32 +59,23 @@ class SyncSlider:
 
     def _handle_tap_down(self, e: ft.TapEvent):
         """Обработчик клика на слайдер"""
-        print(f"🖱️🖱️🖱️ TAP DOWN CALLED! e={e}, local_x={e.local_x}")
-
         if e.local_x is not None:
             container_width = self._get_container_width()
-            print(f"   Container width: {container_width}px")
-
             if container_width > 0:
-                # Ограничиваем координату в границах [0, container_width]
                 corrected_x = max(0, min(e.local_x, container_width))
-
-                # Конвертируем пиксели в время
                 if hasattr(self.size_manager, 'time_ruler') and self.size_manager.time_ruler:
                     time_ms = self.size_manager.time_ruler.pixels_to_time(corrected_x)
                     total_duration = self.editor.project.duration
                     percent = time_ms / total_duration if total_duration > 0 else 0
-                    percent = max(0, min(1, percent))  # Ограничиваем [0, 1]
+                    percent = max(0, min(1, percent))
                 else:
                     percent = corrected_x / container_width
 
-                print(f"   Percent: {percent:.2%}")
                 self._update_visual_progress(percent)
                 self.editor.set_playback_position(percent, seeking=False)
 
     def _handle_drag_start(self, e: ft.DragStartEvent):
         """Обработчик начала перетаскивания"""
-        print("🎯 DRAG START")
         self.is_dragging = True
         self.was_playing = self.editor.is_playing()
         if self.was_playing:
@@ -96,66 +83,50 @@ class SyncSlider:
 
     def _handle_drag_update(self, e: ft.DragUpdateEvent):
         """Обработчик перетаскивания"""
-        print(f"👆 DRAG UPDATE: local_x={e.local_x}")
-
         if e.local_x is not None and self.is_dragging:
             container_width = self._get_container_width()
-
             if container_width > 0:
                 corrected_x = max(0, min(e.local_x, container_width))
-
                 if hasattr(self.size_manager, 'time_ruler') and self.size_manager.time_ruler:
                     time_ms = self.size_manager.time_ruler.pixels_to_time(corrected_x)
                     total_duration = self.editor.project.duration
                     percent = time_ms / total_duration if total_duration > 0 else 0
                 else:
                     percent = corrected_x / container_width
+                percent = max(0, min(1, percent))
 
-                percent = max(0, min(1, percent))  # Ограничиваем [0, 1]
-
-                print(f"   Percent: {percent:.2%}")
                 self._update_visual_progress(percent)
-
                 if self.on_position_changed:
-                    self.on_position_changed(percent, True)  # True = seeking
+                    self.on_position_changed(percent, True)
 
     def _handle_drag_end(self, e: ft.DragEndEvent):
         """Обработчик окончания перетаскивания"""
-        print("🛑 DRAG END")
         if self.is_dragging:
             self.is_dragging = False
-
             container_width = self._get_container_width()
             if container_width > 0:
                 final_percent = self.progress_container.width / container_width
                 final_percent = max(0, min(1, final_percent))
                 self.editor.set_playback_position(final_percent, seeking=True)
-
-            self.editor.project.seeking = False  # ← ДОБАВЬ!
+                self.editor.project.seeking = False
 
             if self.was_playing:
-                print("▶️ Resuming playback after drag")
                 self.editor.project.playing = True
                 self.editor.project.paused = False
-                print(
-                    f"   playing={self.editor.project.playing}, paused={self.editor.project.paused}, seeking={self.editor.project.seeking}")
-
             self.was_playing = False
 
     def _update_visual_progress(self, percent):
         """Обновляет визуальный прогресс"""
         container_width = self._get_container_width()
         progress_width = percent * container_width
-
         self.progress_container.width = progress_width
-
         try:
             if hasattr(self.progress_container, 'page') and self.progress_container.page:
                 self.progress_container.update()
             if hasattr(self.slider_stack, 'page') and self.slider_stack.page:
                 self.slider_stack.update()
-        except Exception as e:
-            print(f"   ⚠️ Update failed: {e}")
+        except Exception:
+            pass
 
     def set_position(self, position, visual_only=False):
         """Устанавливает позицию слайдера (от внешних источников)"""
@@ -168,9 +139,7 @@ class SyncSlider:
 
 
 class SizeManager:
-    """
-    Класс для управления размерами UI компонентов
-    """
+    """Класс для управления размерами UI компонентов"""
 
     def __init__(self, page):
         self.page = page
@@ -184,31 +153,24 @@ class SizeManager:
         """Обновляет все размеры на основе текущего размера страницы"""
         if not self.page:
             return
-
         self.main_slider_width = self.page.width - self.page_padding
         self.track_clips_width = self.page.width - self.controls_panel_width - self.page_padding
         self.time_ruler_width = self.page.width - self.page_padding
 
-        print(f"Size update - Page: {self.page.width}, Main: {self.main_slider_width}, Tracks: {self.track_clips_width}")
-
 
 class TimeRuler:
-    """
-    Класс для создания и управления линейкой времени
-    """
+    """Класс для создания и управления линейкой времени"""
 
     def __init__(self, editor, size_manager, track_manager=None):
         self.editor = editor
         self.size_manager = size_manager
         self.track_manager = track_manager
 
-        # Базовая конфигурация
         self.base_pixels_per_second = 100
         self.pixels_per_second = self.base_pixels_per_second
         self.min_pixels_per_second = 50
         self.max_pixels_per_second = 500
 
-        # Основные компоненты
         self.ruler_container = None
         self.markers_container = None
         self.slider = None
@@ -217,7 +179,6 @@ class TimeRuler:
 
     def _setup_ui(self):
         """Настраивает UI компоненты линейки"""
-        # Контейнер для маркеров
         self.markers_container = ft.Container(
             height=40,
             bgcolor=ft.Colors.GREY_800,
@@ -237,7 +198,7 @@ class TimeRuler:
                 padding=ft.padding.only(top=5, bottom=5),
                 bgcolor=ft.Colors.GREY_700,
                 expand=True,
-            )
+            ),
         ], spacing=0)
 
     def calculate_ruler_width(self):
@@ -258,7 +219,6 @@ class TimeRuler:
 
         for second in range(0, int(total_duration_sec) + seconds_step, seconds_step):
             position_px = second * self.pixels_per_second
-
             markers.append(
                 ft.Container(
                     content=ft.Column([
@@ -276,10 +236,8 @@ class TimeRuler:
                             ),
                             margin=ft.margin.only(top=2),
                             alignment=ft.alignment.center,
-                        )
-                    ],
-                    spacing=0,
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                        ),
+                    ], spacing=0, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                     left=position_px - 1,
                     width=40,
                 )
@@ -317,10 +275,6 @@ class TimeRuler:
             if slider_build:
                 slider_build.width = total_width
 
-        print(f"Ruler updated: duration={self.editor.project.duration}ms, "
-              f"width={total_width}px, scale={self.pixels_per_second}px/sec, "
-              f"step={seconds_step}s")
-
     def _calculate_optimal_step(self):
         """Вычисляет оптимальный шаг маркеров"""
         if self.pixels_per_second >= 200:
@@ -337,7 +291,6 @@ class TimeRuler:
         old_scale = self.pixels_per_second
         self.pixels_per_second = min(self.max_pixels_per_second, self.pixels_per_second * 1.5)
         if old_scale != self.pixels_per_second:
-            print(f"Zoom in: {old_scale} -> {self.pixels_per_second} px/sec")
             self.ruler_width = self.calculate_ruler_width()
             return True
         return False
@@ -347,7 +300,6 @@ class TimeRuler:
         old_scale = self.pixels_per_second
         self.pixels_per_second = max(self.min_pixels_per_second, self.pixels_per_second / 1.5)
         if old_scale != self.pixels_per_second:
-            print(f"Zoom out: {old_scale} -> {self.pixels_per_second} px/sec")
             self.ruler_width = self.calculate_ruler_width()
             return True
         return False
@@ -373,9 +325,7 @@ class TimeRuler:
 
 
 class ScrollSyncManager:
-    """
-    Класс для синхронизации прокрутки между различными элементами
-    """
+    """Класс для синхронизации прокрутки между различными элементами"""
 
     def __init__(self):
         self.scroll_controls = {}
@@ -389,7 +339,6 @@ class ScrollSyncManager:
         """Синхронизирует прокрутку всех контролов"""
         if self.is_syncing:
             return
-
         self.is_syncing = True
         for control_id, control in self.scroll_controls.items():
             if control_id != source_id:
@@ -397,18 +346,19 @@ class ScrollSyncManager:
                     current_scroll = getattr(control, 'scroll_offset', 0)
                     new_scroll = current_scroll + delta_x
                     control.scroll_to(offset=new_scroll, duration=0)
-                except Exception as e:
-                    print(f"Error syncing scroll for {control_id}: {e}")
+                except Exception:
+                    pass
         self.is_syncing = False
 
 
 class TrackManager:
+    """Класс для управления дорожками и UI компонентами"""
+
     def __init__(self, editor, page):
         self.editor = editor
         self.page = page
         self.size_manager = SizeManager(page)
         self.scroll_sync = ScrollSyncManager()
-
         self.size_manager.update_sizes()
 
         self.sync_sliders = []
@@ -428,10 +378,8 @@ class TrackManager:
 
         self.time_ruler = TimeRuler(editor, self.size_manager, self)
         self.size_manager.time_ruler = self.time_ruler
-
         self.main_slider = self.time_ruler.slider
         self.main_slider.on_position_changed = self._on_all_sliders_changed
-
         self.editor.set_ui_update_callback(self._on_playback_position_changed)
 
         from file_dialog import FileDialog
@@ -454,13 +402,20 @@ class TrackManager:
                 on_click=lambda e: self.zoom_out(),
                 tooltip="Уменьшить масштаб (показать больше времени)"
             ),
-            ft.Text("100px/сек", size=12, weight="bold"),
             ft.IconButton(
                 ft.Icons.ZOOM_IN,
                 on_click=lambda e: self.zoom_in(),
                 tooltip="Увеличить масштаб (показать меньше времени)"
             ),
-        ], alignment=ft.MainAxisAlignment.CENTER)
+        ])
+
+        self.export_button = ft.ElevatedButton(
+            text="Экспортировать",
+            icon=ft.Icons.DOWNLOAD,
+            on_click=self.on_export_click,
+            bgcolor=ft.Colors.BLUE_600,
+            color=ft.Colors.WHITE,
+        )
 
     def _on_files_selected(self, file_paths):
         """Обработчик выбора файлов для добавления в дорожку"""
@@ -470,15 +425,11 @@ class TrackManager:
 
     def _add_clips_to_track(self, track_index, file_paths):
         """Добавляет клипы в указанную дорожку в конец"""
-        print(f"\n🎯 _add_clips_to_track called with {len(file_paths)} files")
-
         if 0 <= track_index < len(self.editor.project.tracks):
             track = self.editor.project.tracks[track_index]
-            print(f"   Track {track_index} found, clips count: {len(track.clips)}")
 
             if track.clips:
                 last_clip_end = max(clip.end_time for clip in track.clips)
-                print(f"   Last clip ends at: {last_clip_end}ms")
             else:
                 last_clip_end = 0
 
@@ -488,19 +439,12 @@ class TrackManager:
             for file_path in file_paths:
                 clip_name = os.path.splitext(os.path.basename(file_path))
                 clip = self.editor.add_audio_clip(track_index, file_path, current_start_time, clip_name)
-
                 if clip:
                     current_start_time = clip.end_time
                     added_clips.append(clip)
 
             if added_clips:
-                print(f"\n 🎬 Updating visualizations...")
-
-                self.time_ruler.update_ruler()
-                self.update_track_contents_width()
                 self.update_all_visualizations()
-
-                print(f" ✅ Visualizations updated")
 
     def _open_file_dialog_for_track(self, track_index):
         """Открывает диалог выбора файлов для конкретной дорожки"""
@@ -542,25 +486,17 @@ class TrackManager:
 
     def _initialize_default_tracks(self):
         """Создает начальные дорожки с клипами"""
-        # Создаём дорожки
         track1 = self.editor.create_track("Дорожка 1")
         track2 = self.editor.create_track("Дорожка 2")
 
-        # Добавляем клипы
-        self.editor.add_audio_clip(0, "test.wav", 0, "Клип 1")
-        self.editor.add_audio_clip(1, "test.wav", 2000, "Клип 2")
-
-        # Обновляем проект
         self.editor.project._update_duration()
         self.time_ruler.update_ruler()
 
-        # Создаём UI
         for i, track in enumerate(self.editor.project.tracks):
             track_ui = self._create_track_ui(track, i)
             self.tracks_column.controls.append(track_ui)
             self.track_ui_elements.append(track_ui)
 
-        # Добавляем кнопку
         self.tracks_column.controls.append(
             ft.Container(
                 content=self.add_track_button,
@@ -569,16 +505,13 @@ class TrackManager:
             )
         )
 
-        # Обновляем визуализацию
         self.update_all_visualizations()
+
         if self.page:
             self.page.update()
 
-        print("✅ Дорожки инициализированы успешно")
-
     def _create_track_ui(self, track, index):
-        """Создает UI для одной дорожки - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
-
+        """Создает UI для одной дорожки"""
         track_slider = SyncSlider(self.editor, self.size_manager, height=40)
         track_slider.on_position_changed = self._on_all_sliders_changed
         self.sync_sliders.append(track_slider)
@@ -638,11 +571,7 @@ class TrackManager:
                     background_container,
                     clips_container,
                     time_markers_stack,
-                ],
-                    clip_behavior=ft.ClipBehavior.NONE,
-                    height=60,
-                    expand=True,
-                ),
+                ], clip_behavior=ft.ClipBehavior.NONE, height=60, expand=True),
                 ft.Container(
                     content=track_slider.build(),
                     expand=False,
@@ -660,32 +589,25 @@ class TrackManager:
         self.track_listviews.append(list_view)
 
         track_ui = ft.Container(
-            content=ft.Row(
-                [
-                    ft.Container(
-                        content=ft.Column(
-                            [
-                                ft.Text(track.name, size=14, weight="bold"),
-                                ft.IconButton(
-                                    ft.Icons.ADD,
-                                    on_click=lambda e, idx=index: self._open_file_dialog_for_track(idx),
-                                    tooltip="Добавить файл"
-                                )
-                            ],
-                            spacing=0
+            content=ft.Row([
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text(track.name, size=14, weight="bold"),
+                        ft.IconButton(
+                            ft.Icons.ADD,
+                            on_click=lambda e, idx=index: self._open_file_dialog_for_track(idx),
+                            tooltip="Добавить файл"
                         ),
-                        width=150,
-                    ),
-                    ft.Container(
-                        content=list_view,
-                        expand=True,
-                        height=110,
-                        clip_behavior=ft.ClipBehavior.NONE,
-                    ),
-                ],
-                spacing=10,
-                expand=True
-            ),
+                    ], spacing=0),
+                    width=150,
+                ),
+                ft.Container(
+                    content=list_view,
+                    expand=True,
+                    height=110,
+                    clip_behavior=ft.ClipBehavior.NONE,
+                ),
+            ], spacing=10, expand=True),
             border=ft.border.all(1, ft.Colors.GREY_500),
             border_radius=8,
             padding=10,
@@ -694,13 +616,46 @@ class TrackManager:
 
         return track_ui
 
+    def add_clip_to_track_visualization(self, track_index, clip):
+        """Добавляет ТОЛЬКО ОДИН новый клип в визуализацию дорожки"""
+        if track_index >= len(self.editor.project.tracks):
+            return
+
+        track = self.editor.project.tracks[track_index]
+
+        if track_index >= len(self.track_clips_visualizations):
+            return
+
+        clips_stack = self.track_clips_visualizations[track_index]
+
+        if not isinstance(clips_stack, ft.Stack):
+            return
+
+        try:
+            draggable_vis = create_draggable_clip_visualization(
+                clip,
+                track,
+                self.time_ruler,
+                editor=self.editor,
+                top=30,
+                on_drag_end_callback=self._on_clip_drag_end,
+                on_state_changed=self._on_clip_state_changed
+            )
+
+            clip.draggable_vis = draggable_vis
+            clips_stack.controls.append(draggable_vis)
+
+            try:
+                clips_stack.update()
+            except Exception:
+                pass
+
+        except Exception:
+            pass
+
     def _create_clips_visualization(self, track, track_index):
         """Создает визуализацию всех клипов на дорожке"""
-
-        clips_stack = ft.Stack(
-            [],
-            height=100
-        )
+        clips_stack = ft.Stack([], height=100)
 
         def on_drag_end(clip):
             conflicts = ClipConflictManager.find_conflicting_clips(track, clip, exclude_self=True)
@@ -709,7 +664,6 @@ class TrackManager:
                     track, clip, clip.start_time
                 )
                 if not success:
-                    print(f"❌ {message}")
                     self.update_all_visualizations()
                     if self.page:
                         snackbar = ft.SnackBar(ft.Text(message))
@@ -717,7 +671,6 @@ class TrackManager:
                         snackbar.open = True
                         self.page.update()
                 else:
-                    print(f"✅ {message}")
                     self.update_all_visualizations()
                     if self.page:
                         snackbar = ft.SnackBar(ft.Text(message))
@@ -725,24 +678,19 @@ class TrackManager:
                         snackbar.open = True
                         self.page.update()
             else:
-                print(f"✅ Клип '{clip.name}' успешно перемещён")
                 self.update_all_visualizations()
                 self.editor.project._update_duration()
                 self.time_ruler.update_ruler()
 
         def on_state_changed(state):
-            print(f"📌 State changed: {state} for clip {state}")
             if state == "trimmed":
-                print(f"✅ Клип обрезан")
-                self.update_all_visualizations()
+                self.time_ruler.update_ruler()
                 if self.page:
                     self.page.update()
-                self.editor.project._update_duration()
-                self.time_ruler.update_ruler()
 
         for clip in track.get_clips_sorted():
             try:
-                draggable_vis = create_draggable_clip_visualization(
+                draggable_obj = create_draggable_clip_visualization(
                     clip,
                     track,
                     self.time_ruler,
@@ -751,16 +699,17 @@ class TrackManager:
                     on_drag_end_callback=on_drag_end,
                     on_state_changed=on_state_changed
                 )
-                clips_stack.controls.append(draggable_vis)
-            except Exception as e:
-                print(f"Error creating visualization for clip {clip.name}: {e}")
+
+                clip._draggable_vis = draggable_obj
+                clips_stack.controls.append(draggable_obj)
+
+            except Exception:
+                pass
 
         return clips_stack
 
     def _on_clip_drag_end(self, clip):
         """Обработчик окончания перетаскивания клипа"""
-        print(f"\n✅ Drag end: '{clip.name}'")
-
         track = None
         for t in self.editor.project.tracks:
             if clip in t.clips:
@@ -771,16 +720,15 @@ class TrackManager:
             return
 
         conflicts = ClipConflictManager.find_conflicting_clips(track, clip, exclude_self=True)
-
         if conflicts:
             success, message, moved_clips = ClipConflictManager.resolve_move_conflict(
                 track, clip, clip.start_time
             )
 
             if not success:
-                print(f"❌ {message}")
+                pass
             else:
-                print(f"✅ {message}")
+                pass
 
             self.update_all_visualizations()
             if self.page:
@@ -789,66 +737,81 @@ class TrackManager:
                 snackbar.open = True
                 self.page.update()
         else:
-            print(f"✅ Клип '{clip.name}' успешно перемещён")
+            self.editor.project._update_duration()
+            self.time_ruler.update_ruler()
 
-        self.editor.project._update_duration()
-        self.time_ruler.update_ruler()
+    def _update_clip_visualization_only(self, clip):
+        """Обновляет визуализацию ТОЛЬКО конкретного клипа"""
+        track_index = None
+        for idx, track in enumerate(self.editor.project.tracks):
+            if clip in track.clips:
+                track_index = idx
+                break
+
+        if track_index is None:
+            return
+
+        if track_index >= len(self.track_clips_visualizations):
+            return
+
+        clips_stack = self.track_clips_visualizations[track_index]
+
+        if not isinstance(clips_stack, ft.Stack):
+            return
+
+        from drag_drop import create_draggable_clip_visualization
+
+        try:
+            new_viz = create_draggable_clip_visualization(
+                clip,
+                self.editor.project.tracks[track_index],
+                self.time_ruler,
+                editor=self.editor,
+                top=30,
+                on_drag_end_callback=self._on_clip_drag_end,
+                on_state_changed=self._on_clip_state_changed
+            )
+
+            for i, control in enumerate(clips_stack.controls):
+                clips_stack.controls[i] = new_viz
+
+            try:
+                clips_stack.update()
+            except Exception:
+                pass
+            return
+
+        except Exception:
+            pass
 
     def _on_clip_state_changed(self, state):
         """Обработчик изменения состояния клипа"""
-        print(f"📌 State changed: {state}")
         if state == "trimmed":
-            # Обрезание должно только менять trim_start/trim_end, не саму длину проекта
             self.time_ruler.update_ruler()
-
             if self.page:
                 self.page.update()
 
     def update_all_visualizations(self):
         """Обновляет визуализации для всех дорожек"""
-        print(f"\n📊 update_all_visualizations() called")
-
         try:
             new_width = self.time_ruler.ruler_width
-            print(f"new_width = {new_width}px (ruler_width={self.time_ruler.ruler_width}px)")
-
-            print(f"\n⏱️ STEP 1: Updating time markers...")
 
             for i, track_ui in enumerate(self.track_ui_elements):
                 try:
-                    print(f"Track {i}: track_ui type = {type(track_ui).__name__}")
-
                     if isinstance(track_ui, ft.Container) and track_ui.content:
                         row = track_ui.content
-                        print(f"row type = {type(row).__name__}")
-
                         if isinstance(row, ft.Row) and len(row.controls) > 1:
-                            list_container = row.controls[1]  # ← ИНДЕКС [1]!
-                            print(f"list_container type = {type(list_container).__name__}")
-
+                            list_container = row.controls[1]
                             if isinstance(list_container, ft.Container):
                                 if i < len(self.track_listviews):
                                     listview = self.track_listviews[i]
-                                    print(
-                                        f"listview type = {type(listview).__name__}, len={len(listview.controls)}")
-
                                     if isinstance(listview, ft.ListView) and len(listview.controls) > 0:
                                         track_content = listview.controls[0]
-                                        print(f"track_content type = {type(track_content).__name__}")
-
                                         if isinstance(track_content, ft.Container):
-                                            print(
-                                                f"track_content.content type = {type(track_content.content).__name__}")
-
-                                            if isinstance(track_content.content, ft.Column):  # ← Column!
+                                            if isinstance(track_content.content, ft.Column):
                                                 column = track_content.content
-                                                print(f"column controls: {len(column.controls)}")
-
-                                                if len(column.controls) > 0 and isinstance(column.controls[0],
-                                                                                           ft.Stack):
+                                                if len(column.controls) > 0 and isinstance(column.controls[0], ft.Stack):
                                                     stack = column.controls[0]
-                                                    print(
-                                                        f"Found Stack with {len(stack.controls)} controls")
 
                                                     time_markers = []
                                                     total_duration_sec = max(10, self.editor.project.duration / 1000)
@@ -878,34 +841,21 @@ class TrackManager:
 
                                                     if len(stack.controls) > 2:
                                                         stack.controls[2] = new_markers_stack
-                                                        print(f"✅ Updated markers for track {i}")
-                except Exception as e:
-                    print(f"  ❌ Track {i}: {e}")
 
-            print(f"\n🎬 STEP 2: Updating clips...")
+                except Exception:
+                    pass
 
-            # Очищаем старые
             for i, track_vis in enumerate(self.track_clips_visualizations):
                 if isinstance(track_vis, ft.Stack):
                     track_vis.controls.clear()
                     track_vis.width = new_width
-                    print(f"  Track {i}: Stack cleared, width={new_width}px")
-
-            # Пересоздаем
-            print(f"Total tracks in project: {len(self.editor.project.tracks)}")
-            print(f"Total track_clips_visualizations: {len(self.track_clips_visualizations)}")
 
             for track_index, track in enumerate(self.editor.project.tracks):
-                print(f"Processing track {track_index}: {len(track.clips)} clips")
-
                 if track_index < len(self.track_clips_visualizations):
                     track_vis_stack = self.track_clips_visualizations[track_index]
-                    print(f"Stack type: {type(track_vis_stack).__name__}")
-
                     if isinstance(track_vis_stack, ft.Stack):
                         for clip_idx, clip in enumerate(track.clips):
                             try:
-                                print(f"Creating viz for clip {clip_idx}: {clip.name}")
                                 draggable_vis = create_draggable_clip_visualization(
                                     clip,
                                     track,
@@ -915,16 +865,12 @@ class TrackManager:
                                     on_drag_end_callback=self._on_clip_drag_end,
                                     on_state_changed=self._on_clip_state_changed
                                 )
+
                                 track_vis_stack.controls.append(draggable_vis)
-                                print(f"✅ Added, stack now has {len(track_vis_stack.controls)} controls")
-                            except Exception as e:
-                                print(f"❌ Clip '{clip.name}': {e}")
-                    else:
-                        print(f"❌ Not a Stack, it's {type(track_vis_stack).__name__}")
-                else:
-                    print(
-                        f"❌ track_index {track_index} >= len(track_clips_visualizations) {len(self.track_clips_visualizations)}")
-            print(f"\n  Updating parent containers...")
+
+                            except Exception:
+                                pass
+
             for i, track_ui in enumerate(self.track_ui_elements):
                 try:
                     if isinstance(track_ui, ft.Container) and track_ui.content:
@@ -937,44 +883,34 @@ class TrackManager:
                                     if isinstance(listview, ft.ListView) and len(listview.controls) > 0:
                                         track_content = listview.controls[0]
                                         if isinstance(track_content, ft.Container):
-                                            track_content.update()  # ← Обновляем родителя!
-                                            print(f"    ✅ Track {i} parent updated")
-                except Exception as e:
-                    print(f"    ❌ Track {i}: {e}")
+                                            track_content.update()
 
-            print(f"\n🎨 STEP 3: Updating all containers...")
+                except Exception:
+                    pass
 
+            new_width = self.time_ruler.ruler_width
+            for i, listview in enumerate(self.track_listviews):
+                if isinstance(listview, ft.ListView) and len(listview.controls) > 0:
+                    track_content = listview.controls[0]
+                    if isinstance(track_content, ft.Container):
+                        track_content.width = new_width
+                        try:
+                            track_content.update()
+                        except:
+                            pass
 
             if self.page:
-                print(f"✅ Page updated")
-                new_width = self.time_ruler.ruler_width
-                for i, listview in enumerate(self.track_listviews):
-                    if isinstance(listview, ft.ListView) and len(listview.controls) > 0:
-                        track_content = listview.controls[0]
-                        if isinstance(track_content, ft.Container):
-                            track_content.width = new_width
-                            try:
-                                track_content.update()
-                            except:
-                                pass
-
                 self.page.update()
 
-            print(f"📊 Final duration: {self.editor.project.duration}ms\n")
-
-        except Exception as e:
-            print(f"❌ Error: {e}")
-            import traceback
-            traceback.print_exc()
+        except Exception:
+            pass
 
     def add_track(self, e=None):
         """Добавляет новую дорожку"""
         track_name = f"Дорожка {len(self.editor.project.tracks) + 1}"
         track = self.editor.create_track(track_name)
-
         track_ui = self._create_track_ui(track, len(self.editor.project.tracks) - 1)
         self.track_ui_elements.append(track_ui)
-
         self.tracks_column.controls.insert(-1, track_ui)
         self.update_all_visualizations()
         if self.page:
@@ -984,6 +920,7 @@ class TrackManager:
         """Возвращает контейнер со списком дорожек"""
         return ft.Column([
             self.zoom_buttons,
+            self.export_button,
             self.tracks_column,
         ], spacing=10, expand=True)
 
@@ -1005,30 +942,23 @@ class TrackManager:
 
     def update_track_contents_width(self):
         """Обновляет ширину track_content для всех дорожек"""
-
         new_width = self.time_ruler.ruler_width
-        print(f"\n🔄 Updating track_content width to {new_width}px")
 
         for i, track_ui in enumerate(self.track_ui_elements):
             if isinstance(track_ui, ft.Container) and track_ui.content:
                 row = track_ui.content
                 if isinstance(row, ft.Row) and len(row.controls) > 1:
-                    # Получаем контейнер с ListView
-                    list_container = row.controls
+                    list_container = row.controls[1]
                     if isinstance(list_container, ft.Container):
                         list_container.width = new_width
-
                         listview = self.track_listviews[i]
                         if isinstance(listview, ft.ListView) and len(listview.controls) > 0:
-                            track_content = listview.controls
+                            track_content = listview.controls[0]
                             if isinstance(track_content, ft.Container):
                                 track_content.width = new_width
-
                                 if isinstance(track_content.content, ft.Stack):
                                     stack = track_content.content
                                     stack.width = new_width
-
-                                    # Обновляем ВСЕ контейнеры внутри Stack
                                     for j, element in enumerate(stack.controls):
                                         if isinstance(element, ft.Container):
                                             element.width = new_width
@@ -1043,34 +973,132 @@ class TrackManager:
                                                     element.content.update()
                                                 except:
                                                     pass
-
-                                    # Обновляем сам Stack
                                     try:
                                         stack.update()
                                     except:
                                         pass
-
-                                # Обновляем track_content
                                 try:
                                     track_content.update()
                                 except:
                                     pass
-                        # Обновляем list_container
                         try:
                             list_container.update()
                         except:
                             pass
 
-        # Финальное обновление страницы
         if self.page:
             try:
                 self.page.update()
-                print(f" ✅ Page updated with width {new_width}px")
-            except Exception as e:
-                print(f" ❌ Page update failed: {e}")
+            except Exception:
+                pass
 
+    def on_export_click(self, e):
+        """Открывает диалог выбора формата и пути для экспорта"""
+        format_dropdown = ft.Dropdown(
+            label="Формат",
+            options=[
+                ft.dropdown.Option("wav", text="WAV (Без сжатия)"),
+                ft.dropdown.Option("mp3", text="MP3 (Сжатый)"),
+                ft.dropdown.Option("flac", text="FLAC (Без потерь)"),
+                ft.dropdown.Option("ogg", text="OGG (Сжатый)"),
+            ],
+            value="wav",
+            width=200,
+        )
 
+        filename_field = ft.TextField(
+            label="Имя файла",
+            value="export",
+            width=250,
+        )
 
+        progress_text = ft.Text("", size=12, color=ft.Colors.BLUE)
+        progress_bar = ft.ProgressBar(value=0, width=300)
 
+        def on_export_confirm(e):
+            """Выполняет экспорт"""
+            if not filename_field.value:
+                filename_field.value = "export"
 
+            format_ext = format_dropdown.value or "wav"
+            filename = f"{filename_field.value}.{format_ext}"
 
+            if platform.system() == "Windows":
+                download_dir = Path.home() / "Downloads"
+            else:
+                download_dir = Path.home() / "Downloads"
+
+            output_path = download_dir / filename
+
+            dialog.content.controls.append(ft.Divider())
+            dialog.content.controls.append(progress_text)
+            dialog.content.controls.append(progress_bar)
+
+            dialog.open = False
+
+            if self.page:
+                self.page.update()
+
+            exporter = AudioExporter(self.editor.project)
+
+            def on_progress(progress, message):
+                """Обновляет прогресс"""
+                progress_text.value = message
+                progress_bar.value = progress / 100
+                if self.page:
+                    try:
+                        progress_text.update()
+                        progress_bar.update()
+                    except:
+                        pass
+
+            def on_complete(success):
+                """Завершение экспорта"""
+                if success:
+                    progress_text.value = f"✅ Сохранено: {output_path}"
+                    if self.page:
+                        snackbar = ft.SnackBar(ft.Text(f"✅ Аудио экспортировано: {output_path}"))
+                        self.page.overlay.append(snackbar)
+                        snackbar.open = True
+                        self.page.update()
+                else:
+                    progress_text.value = "❌ Ошибка экспорта!"
+                    if self.page:
+                        snackbar = ft.SnackBar(ft.Text("❌ Ошибка при экспорте"))
+                        self.page.overlay.append(snackbar)
+                        snackbar.open = True
+                        self.page.update()
+
+            exporter.export_async(
+                str(output_path),
+                format_ext,
+                progress_callback=on_progress,
+                completion_callback=on_complete
+            )
+
+        def close_dialog():
+            dialog.open = False
+            if self.page:
+                self.page.update()
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("📥 Экспортировать аудио"),
+            content=ft.Column([
+                filename_field,
+                format_dropdown,
+            ], width=400, spacing=15),
+            actions=[
+                ft.TextButton("Отмена", on_click=lambda e: close_dialog()),
+                ft.TextButton(
+                    "Экспортировать",
+                    on_click=on_export_confirm,
+                    style=ft.ButtonStyle(color=ft.Colors.BLUE),
+                ),
+            ],
+        )
+
+        self.page.overlay.append(dialog)
+        dialog.open = True
+
+        if self.page:
+            self.page.update()

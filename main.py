@@ -3,7 +3,6 @@ import threading
 import time
 from controllers import AudioEditorController
 from utils import create_transport_controls
-from models import Project, Track, AudioClip
 from ui_components import TrackManager
 
 
@@ -16,7 +15,6 @@ def main(page: ft.Page):
     editor = AudioEditorController()
     track_manager = TrackManager(editor, page)
 
-    # Устанавливаем взаимные ссылки
     editor.set_track_manager(track_manager)
 
     transport_controls = create_transport_controls(editor, page)
@@ -28,7 +26,6 @@ def main(page: ft.Page):
 
     page.on_resize = on_resize
 
-    # Добавляем элементы на страницу
     content = ft.Column([
         ft.Text("SigmAudio",
                 size=24, weight="bold", color=ft.Colors.BLUE_200),

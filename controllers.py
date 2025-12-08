@@ -1,15 +1,13 @@
 from models import Project, Track, AudioClip
-import threading
 
 
 class AudioEditorController:
-    """
-    Контроллер аудио редактора - управляет логикой приложения
-    """
+    """Контроллер аудио редактора - управляет логикой приложения"""
+
     def __init__(self):
         self.project = Project()
         self.ui_update_callback = None
-        self.track_manager = None  # Будет устанавливаться извне
+        self.track_manager = None
 
     def create_track(self, name="Track"):
         track = Track(name)
@@ -26,16 +24,13 @@ class AudioEditorController:
                 clip = AudioClip(file_path, start_time, name=name)
                 self.project.tracks[track_index].add_clip(clip)
                 self.project._update_duration()
-                print(f"Added audio clip: {name} to track {track_index}, project duration: {self.project.duration}ms")
 
-                # Автоматически обновляем линейку при добавлении клипа
                 if self.track_manager:
                     self.track_manager.time_ruler.update_ruler()
                     self.track_manager.update_all_visualizations()
 
                 return clip
             except Exception as e:
-                print(f"Error adding audio clip: {e}")
                 return None
         return None
 

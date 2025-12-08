@@ -3,37 +3,21 @@ from pydub import AudioSegment
 from pydub.utils import which
 import numpy as np
 import pyaudio
-import wave
-import logging
-
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger(__name__)
 
 
 def _setup_ffmpeg():
-    """
-    Проверяет наличие ffmpeg и настраивает его при необходимости
-    """
+    """Проверяет наличие ffmpeg и настраивает его при необходимости"""
     try:
         ffmpeg_path = which("ffmpeg")
         ffprobe_path = which("ffprobe")
-
-        if ffmpeg_path:
-            logger.info(f"✅ ffmpeg найден: {ffmpeg_path}")
-        else:
-            logger.warning("⚠️ ffmpeg не найден в PATH. Попытаемся использовать автоматическое обнаружение...")
-
-        if ffprobe_path:
-            logger.info(f"✅ ffprobe найден: {ffprobe_path}")
-
-        return True
-    except Exception as e:
-        logger.warning(f"⚠️ Проблема с инициализацией ffmpeg: {e}")
+        if ffmpeg_path and ffprobe_path:
+            return True
+        return False
+    except Exception:
         return False
 
 
 _setup_ffmpeg()
-
 
 SUPPORTED_FORMATS = {
     'mp3': 'MPEG Audio',
@@ -50,8 +34,8 @@ SUPPORTED_EXTENSIONS = list(SUPPORTED_FORMATS.keys())
 
 
 class AudioClip:
-    """
-    Класс для представления аудиоклипа
+    """Класс для представления аудиоклипа
+
     Поддерживает: MP3, WAV, FLAC, M4A, AAC, OGG, WMA, AIFF
     """
 
@@ -63,40 +47,27 @@ class AudioClip:
         self.original_format = None
 
         try:
-            # Определяем расширение файла
             _, file_ext = os.path.splitext(file_path)
             file_ext = file_ext.lstrip('.').lower()
             self.original_format = file_ext
 
-            logger.info(f"🎵 Загружаем файл: {file_path} (формат: {file_ext})")
             self.audio = AudioSegment.from_file(file_path,
                                                 format=file_ext if file_ext in SUPPORTED_EXTENSIONS else None)
-
             self.duration = len(self.audio)
             self.end_time = self.start_time + self.duration
-
             self.raw_data = self.audio.raw_data
             self.sample_width = self.audio.sample_width
             self.channels = self.audio.channels
             self.frame_rate = self.audio.frame_rate
-
-            self.trim_start = 0  # Сколько удалено с начала
-            self.trim_end = 0  # Сколько удалено с конца
+            self.trim_start = 0
+            self.trim_end = 0
             self.original_duration = self.duration
 
-            logger.info(f"✅ Загруженно: {name}")
-            logger.info(f"   Длительность: {self.duration}ms ({self.duration / 1000:.2f}s)")
-            logger.info(f"   Каналы: {self.channels}, Sample Rate: {self.frame_rate}Hz")
-
         except FileNotFoundError:
-            logger.error(f"❌ Файл не найден: {file_path}")
             self._set_error_defaults()
-        except ValueError as e:
-            logger.error(f"❌ Неподдерживаемый формат или ошибка декодирования: {e}")
+        except ValueError:
             self._set_error_defaults()
-        except Exception as e:
-            logger.error(f"❌ Ошибка при загрузке аудио {file_path}: {e}")
-            logger.error(f"   Тип ошибки: {type(e).__name__}")
+        except Exception:
             self._set_error_defaults()
 
     def _set_error_defaults(self):
@@ -118,15 +89,11 @@ class AudioClip:
             return None
 
         end_ms = min(start_ms + duration_ms, self.duration)
-
-        # Вычисляем позиции в байтах с учётом trim
         actual_start_ms = start_ms + self.trim_start
         actual_end_ms = end_ms + self.trim_start
-
         bytes_per_ms = self.frame_rate * self.sample_width * self.channels / 1000
         start_byte = int(actual_start_ms * bytes_per_ms)
         end_byte = int(actual_end_ms * bytes_per_ms)
-
         sample_size = self.sample_width * self.channels
         start_byte = (start_byte // sample_size) * sample_size
         end_byte = (end_byte // sample_size) * sample_size
@@ -147,6 +114,7 @@ class AudioClip:
             self.trim_start = new_trim
             self.duration = max(0, self.original_duration - self.trim_start - self.trim_end)
             return amount_applied
+
         return abs(amount_ms)
 
     def trim_right(self, amount_ms):
@@ -160,6 +128,7 @@ class AudioClip:
             self.trim_end = new_trim
             self.duration = max(0, self.original_duration - self.trim_start - self.trim_end)
             return amount_applied
+
         return abs(amount_ms)
 
     def get_display_duration(self):
@@ -171,15 +140,13 @@ class AudioClip:
         self.end_time = self.start_time + self.duration
 
     def export_to_format(self, output_path, format=None):
-        """
-        Экспортирует клип в указанный формат
+        """Экспортирует клип в указанный формат
 
         Args:
             output_path: Путь для сохранения
-            format: Формат файла (mp3, wav, flac и т.д.). Если None, определяется по расширению
+            format: Формат файла (mp3, wav, flac и т.д.)
         """
         if not self.audio:
-            logger.error("❌ Не удается экспортировать: аудио не загружено")
             return False
 
         try:
@@ -187,22 +154,16 @@ class AudioClip:
                 _, ext = os.path.splitext(output_path)
                 format = ext.lstrip('.').lower()
 
-            logger.info(f"📤 Экспортируем в {format}: {output_path}")
-
             export_audio = self.audio[self.trim_start:len(self.audio) - self.trim_end]
             export_audio.export(output_path, format=format)
-
-            logger.info(f"✅ Успешно экспортировано")
             return True
-        except Exception as e:
-            logger.error(f"❌ Ошибка при экспорте: {e}")
+
+        except Exception:
             return False
 
 
 class Track:
-    """
-    Класс для представления аудиодорожки
-    """
+    """Класс для представления аудиодорожки"""
 
     def __init__(self, name="Track", volume=1.0, pan=0.0):
         self.name = name
@@ -238,7 +199,6 @@ class Track:
         for other_clip in self.clips:
             if other_clip is clip:
                 continue
-
             if (clip.start_time < other_clip.end_time and
                     clip.end_time > other_clip.start_time):
                 return other_clip
@@ -250,28 +210,23 @@ class Track:
 
 
 class Project:
-    """
-    Класс для управления проектом аудиоредактора
-    """
+    """Класс для управления проектом аудиоредактора"""
 
     def __init__(self, sample_rate=44100, channels=2):
         self.tracks = []
         self.sample_rate = sample_rate
         self.channels = channels
-        self.sample_width = 2  # 16-bit
+        self.sample_width = 2
         self.playing = False
         self.paused = False
         self.seeking = False
         self.current_time = 0
         self.duration = 0
 
-        # Аудиопоток
-        import pyaudio
+        import threading
         self.py_audio = pyaudio.PyAudio()
         self.stream = None
         self.stop_flag = False
-
-        import threading
         self.lock = threading.Lock()
         self.update_callback = None
 
@@ -280,7 +235,7 @@ class Project:
         self._update_duration()
 
     def _update_duration(self):
-        """Обновляет общую длительность проекта ТОЛЬКО если появился новый конец"""
+        """Обновляет общую длительность проекта"""
         max_end = 0
         for track in self.tracks:
             for clip in track.clips:
@@ -289,9 +244,6 @@ class Project:
         new_duration = max(10000, max_end)
         if new_duration > self.duration:
             self.duration = new_duration
-            logger.info(f"📊 Project duration updated: {self.duration}ms")
-        else:
-            logger.info(f"📊 Project duration FIXED at: {self.duration}ms")
 
     def set_update_callback(self, callback):
         self.update_callback = callback
@@ -324,8 +276,8 @@ class Project:
                     self.stream.stop_stream()
                     self.stream.close()
                     self.stream = None
-                except Exception as e:
-                    logger.error(f"Error stopping stream: {e}")
+                except Exception:
+                    pass
 
     def _generate_silence(self, duration_ms):
         """Генерирует тишину указанной длительности"""
@@ -336,6 +288,7 @@ class Project:
     def _mix_audio_chunk(self, start_time, chunk_duration_ms):
         """Микширует аудио из всех дорожек для указанного временного интервала"""
         active_tracks = [track for track in self.tracks if not track.muted]
+
         if not active_tracks:
             return self._generate_silence(chunk_duration_ms)
 
@@ -350,6 +303,7 @@ class Project:
                     continue
 
                 audio_chunk = clip.get_audio_chunk(clip_position, chunk_duration_ms)
+
                 if audio_chunk:
                     if clip.volume != 1.0 or track.volume != 1.0:
                         audio_array = np.frombuffer(audio_chunk, dtype=np.int16)
@@ -389,7 +343,6 @@ class Project:
                 continue
 
             if self.current_time >= self.duration:
-                logger.info(f"🛑 Playback stopped: reached end")
                 self.playing = False
                 self.current_time = 0
                 if self.update_callback:
@@ -413,9 +366,7 @@ class Project:
                                 rate=self.sample_rate,
                                 output=True
                             )
-                            logger.info("🔊 Audio stream opened successfully")
-                        except Exception as e:
-                            logger.error(f"Error opening stream: {e}")
+                        except Exception:
                             break
 
                     if self.stream:
@@ -425,16 +376,14 @@ class Project:
                             if self.update_callback and self.duration > 0:
                                 progress = min(1.0, self.current_time / self.duration)
                                 self.update_callback(progress)
-                        except Exception as e:
-                            logger.error(f"Error writing to stream: {e}")
+                        except Exception:
                             with self.lock:
                                 if self.stream:
                                     self.stream.close()
                                     self.stream = None
                             continue
 
-            except Exception as e:
-                logger.error(f"Error in playback loop: {e}")
+            except Exception:
                 import time
                 time.sleep(0.01)
 
@@ -453,15 +402,12 @@ class Project:
     def add_audio_clip(self, track_index, filepath, start_time=0, name=""):
         """Добавляет аудиоклип на дорожку"""
         if not (0 <= track_index < len(self.tracks)):
-            logger.error(f"Invalid track index: {track_index}")
             return None
 
         try:
             clip = AudioClip(filepath, start_time, name=name)
             self.tracks[track_index].add_clip(clip)
             self._update_duration()
-            logger.info(f"Added clip '{name}' to track {track_index}")
             return clip
-        except Exception as e:
-            logger.error(f"Error adding audio clip: {e}")
+        except Exception:
             return None
