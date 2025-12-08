@@ -6,7 +6,6 @@ from pathlib import Path
 import platform
 
 from drag_drop import create_draggable_clip_visualization
-from clip_conflict_manager import ClipConflictManager
 from audio_exporter import AudioExporter
 
 
@@ -366,7 +365,6 @@ class TrackManager:
         self.track_clips_visualizations = []
         self.track_scroll_controls = []
         self.track_listviews = []
-        self.clip_conflict_manager = ClipConflictManager
 
         self.tracks_column = ft.Column(
             spacing=10,
@@ -406,6 +404,11 @@ class TrackManager:
                 ft.Icons.ZOOM_IN,
                 on_click=lambda e: self.zoom_in(),
                 tooltip="Увеличить масштаб (показать меньше времени)"
+            ),
+            ft.IconButton(
+                ft.Icons.ADD_CIRCLE,
+                on_click=self._on_add_duration_click,
+                tooltip="Добавить 5 секунд к проекту"
             ),
         ])
 
@@ -658,29 +661,9 @@ class TrackManager:
         clips_stack = ft.Stack([], height=100)
 
         def on_drag_end(clip):
-            conflicts = ClipConflictManager.find_conflicting_clips(track, clip, exclude_self=True)
-            if conflicts:
-                success, message, moved_clips = ClipConflictManager.resolve_move_conflict(
-                    track, clip, clip.start_time
-                )
-                if not success:
-                    self.update_all_visualizations()
-                    if self.page:
-                        snackbar = ft.SnackBar(ft.Text(message))
-                        self.page.overlay.append(snackbar)
-                        snackbar.open = True
-                        self.page.update()
-                else:
-                    self.update_all_visualizations()
-                    if self.page:
-                        snackbar = ft.SnackBar(ft.Text(message))
-                        self.page.overlay.append(snackbar)
-                        snackbar.open = True
-                        self.page.update()
-            else:
-                self.update_all_visualizations()
-                self.editor.project._update_duration()
-                self.time_ruler.update_ruler()
+            self.update_all_visualizations()
+            self.editor.project._update_duration()
+            self.time_ruler.update_ruler()
 
         def on_state_changed(state):
             if state == "trimmed":
@@ -710,35 +693,9 @@ class TrackManager:
 
     def _on_clip_drag_end(self, clip):
         """Обработчик окончания перетаскивания клипа"""
-        track = None
-        for t in self.editor.project.tracks:
-            if clip in t.clips:
-                track = t
-                break
-
-        if not track:
-            return
-
-        conflicts = ClipConflictManager.find_conflicting_clips(track, clip, exclude_self=True)
-        if conflicts:
-            success, message, moved_clips = ClipConflictManager.resolve_move_conflict(
-                track, clip, clip.start_time
-            )
-
-            if not success:
-                pass
-            else:
-                pass
-
-            self.update_all_visualizations()
-            if self.page:
-                snackbar = ft.SnackBar(ft.Text(message))
-                self.page.overlay.append(snackbar)
-                snackbar.open = True
-                self.page.update()
-        else:
-            self.editor.project._update_duration()
-            self.time_ruler.update_ruler()
+        self.update_all_visualizations()
+        self.editor.project._update_duration()
+        self.time_ruler.update_ruler()
 
     def _update_clip_visualization_only(self, clip):
         """Обновляет визуализацию ТОЛЬКО конкретного клипа"""
@@ -938,6 +895,14 @@ class TrackManager:
             self.time_ruler.update_ruler()
             self.update_track_contents_width()
             self.update_all_visualizations()
+            self.page.update()
+
+    def _on_add_duration_click(self, e):
+        """Добавляет 5 секунд к проекту"""
+        self.editor.project.add_duration(5000)
+        self.time_ruler.update_ruler()
+        self.update_all_visualizations()
+        if self.page:
             self.page.update()
 
     def update_track_contents_width(self):
