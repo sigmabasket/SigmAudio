@@ -245,6 +245,16 @@ class Project:
         if new_duration > self.duration:
             self.duration = new_duration
 
+    def add_duration(self, duration_ms):
+        """Добавляет дополнительное время к проекту"""
+        if duration_ms > 0:
+            new_duration = self.duration + duration_ms
+            self.duration = new_duration
+
+            if self.update_callback:
+                progress = self.current_time / self.duration if self.duration > 0 else 0
+                self.update_callback(progress)
+
     def set_update_callback(self, callback):
         self.update_callback = callback
 
