@@ -410,6 +410,7 @@ class TrackManager:
                 on_click=self._on_add_duration_click,
                 tooltip="Добавить 5 секунд к проекту"
             ),
+            ft.IconButton(ft.Icons.HELP, on_click=lambda e: self.show_help(), tooltip="Help"),
         ])
 
         self.export_button = ft.ElevatedButton(
@@ -1067,3 +1068,9 @@ class TrackManager:
 
         if self.page:
             self.page.update()
+
+    def show_help(self, e=None):
+        """Показать справку"""
+        from src.UI.help_dialogs import HelpDialog
+        help_dialog = HelpDialog(self.page)
+        help_dialog.show()
