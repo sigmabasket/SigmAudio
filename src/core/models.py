@@ -165,7 +165,7 @@ class AudioClip:
 class Track:
     """Класс для представления аудиодорожки"""
 
-    def __init__(self, name="Track", volume=1.0, pan=0.0):
+    def __init__(self, name="Track", volume=0.5, pan=0.0):
         self.name = name
         self.volume = volume
         self.pan = pan
@@ -207,6 +207,14 @@ class Track:
     def find_clips_after(self, time_ms):
         """Находит все клипы, начинающиеся после time_ms"""
         return [clip for clip in self.clips if clip.start_time >= time_ms]
+
+    def set_volume(self, volume):
+        """Установить громкость дорожки (0.0 - 1.0)"""
+        self.volume = max(0.0, min(1.0, volume))  # Клип от 0 до 1
+
+    def get_volume(self):
+        """Получить текущую громкость"""
+        return self.volume
 
 
 class Project:

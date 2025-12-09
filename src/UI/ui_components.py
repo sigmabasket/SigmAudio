@@ -517,6 +517,13 @@ class TrackManager:
     def _create_track_ui(self, track, index):
         """Создает UI для одной дорожки"""
         track_slider = SyncSlider(self.editor, self.size_manager, height=40)
+        volume_slider = ft.Slider(
+            min=0,
+            max=100,
+            value=track.volume * 100,  # Дорожка имеет volume от 0 до 1
+            width=150,
+            on_change=lambda e: self.on_track_volume_change(index, e.control.value)
+        )
         track_slider.on_position_changed = self._on_all_sliders_changed
         self.sync_sliders.append(track_slider)
 
@@ -597,6 +604,7 @@ class TrackManager:
                 ft.Container(
                     content=ft.Column([
                         ft.Text(track.name, size=14, weight="bold"),
+                        volume_slider,
                         ft.IconButton(
                             ft.Icons.ADD,
                             on_click=lambda e, idx=index: self._open_file_dialog_for_track(idx),
@@ -905,6 +913,12 @@ class TrackManager:
         self.update_all_visualizations()
         if self.page:
             self.page.update()
+
+    def on_track_volume_change(self, track_index, volume_percent):
+        """Изменить громкость дорожки"""
+        if 0 <= track_index < len(self.editor.project.tracks):
+            normalized_volume = volume_percent / 100.0
+            self.editor.project.tracks[track_index].set_volume(normalized_volume)
 
     def update_track_contents_width(self):
         """Обновляет ширину track_content для всех дорожек"""
