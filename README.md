@@ -95,7 +95,7 @@ audio-editor/
 │   ├── core/
 │   │   ├── models.py              # Модели дорожек и клипов
 │   │   ├── audio_exporter.py      # Экспорт в разные форматы
-│   │   └── audio_processor.py     # Обработка аудио
+│   │   └── audio_visualizer.py     # Визуализация аудио
 │   ├── UI/
 │   │   ├── ui_components.py       # Компоненты интерфейса
 │   │   ├── drag_drop.py           # Перетаскивание элементов
